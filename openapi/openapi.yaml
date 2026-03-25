@@ -1,0 +1,4394 @@
+openapi: 3.1.0
+info:
+  title: Open License API
+  version: 0.1.0
+  description: |
+    Open License locked `v1 core` API contract.
+
+    Management responses are JSON envelopes shaped as `{data, meta}`.
+    Signed runtime responses are JSON envelopes shaped as `{data, signature, meta}`.
+    Management operations advertise least-privilege token requirements via `x-required-scopes`.
+    `204 No Content` responses intentionally return an empty body.
+  license:
+    name: See project licensing terms
+servers:
+  - url: /
+tags:
+  - name: runtime
+    description: Public license runtime operations.
+  - name: products
+    description: Management operations for products.
+  - name: policies
+    description: Management operations for policies.
+  - name: features
+    description: Management operations for product features.
+  - name: customers
+    description: Management operations for customers.
+  - name: api-keys
+    description: Management operations for scoped API keys.
+  - name: events
+    description: Management operations for audit and event feeds.
+  - name: webhooks
+    description: Management operations for webhook endpoints and delivery state.
+  - name: licenses
+    description: Management operations for license lifecycle and assignments.
+  - name: devices
+    description: Management operations for registered license devices.
+  - name: commerce
+    description: Management operations for order and subscription records.
+  - name: custom-fields
+    description: Management operations for custom field definitions and values.
+  - name: versions
+    description: Management operations for product versions.
+  - name: system
+    description: Public health and signing-key endpoints.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Management API tokens are sent as `Authorization: Bearer <token>`."
+    licenseAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "License runtime requests send credentials as `Authorization: License <license-key>`."
+  parameters:
+    IDPath:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+    FieldIDPath:
+      in: path
+      name: field_id
+      required: true
+      schema:
+        type: string
+    FeatureIDPath:
+      in: path
+      name: feature_id
+      required: true
+      schema:
+        type: string
+    DeviceIDPath:
+      in: path
+      name: device_id
+      required: true
+      schema:
+        type: string
+    LimitParam:
+      in: query
+      name: limit
+      description: Defaults to `50` and is clamped to `200`.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+    CursorParam:
+      in: query
+      name: cursor
+      description: Return events with sequence numbers lower than this cursor.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    IdempotencyKeyHeader:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Invalid request syntax.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InvalidJSON:
+      description: Request body was invalid JSON or included unknown fields.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InvalidQuery:
+      description: Query parameters were invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    UnauthorizedManagement:
+      description: Missing, malformed, expired, inactive, CIDR-blocked, or unknown management token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    UnauthorizedLicense:
+      description: Missing or invalid license credentials.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ForbiddenScope:
+      description: The management token does not have a required scope for this operation. See the operation-level `x-required-scopes` extension; `admin` also satisfies all management operations.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ForbiddenRuntime:
+      description: The current license, device, policy, or version-eligibility state forbids the operation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: The requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: The request conflicts with current state or an existing record.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ValidationError:
+      description: The request body passed JSON decoding but failed business validation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    ResponseMeta:
+      type: object
+      required:
+        - request_id
+        - timestamp
+      properties:
+        request_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    ErrorObject:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        detail:
+          type: string
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+        - meta
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    EventPageInfo:
+      type: object
+      required:
+        - next_cursor
+      properties:
+        next_cursor:
+          type:
+            - integer
+            - "null"
+          format: int64
+    ManagementScope:
+      type: string
+      enum:
+        - admin
+        - product:read
+        - product:write
+        - license:read
+        - license:write
+        - device:write
+        - event:read
+        - webhook:write
+    LicenseType:
+      type: string
+      enum:
+        - perpetual
+        - time_limited
+        - subscription
+        - trial
+        - consumption
+    LicenseStatus:
+      type: string
+      enum:
+        - active
+        - suspended
+        - expired
+        - revoked
+        - grace_period
+    SubscriptionStatus:
+      type: string
+      enum:
+        - trialing
+        - active
+        - past_due
+        - paused
+        - canceled
+    OrderStatus:
+      type: string
+      enum:
+        - pending
+        - paid
+        - fulfilled
+        - canceled
+        - refunded
+    DeviceStatus:
+      type: string
+      enum:
+        - active
+        - deactivated
+        - blacklisted
+        - reset
+        - expired
+    DeviceBindingKind:
+      type: string
+      enum:
+        - hardware
+        - container
+    AuditActorType:
+      type: string
+      enum:
+        - api_key
+        - license
+        - oidc_subject
+        - system
+    CustomFieldResourceType:
+      type: string
+      enum:
+        - license
+        - customer
+    CustomFieldValueType:
+      type: string
+      enum:
+        - string
+        - integer
+        - boolean
+        - datetime
+        - enum
+    Signature:
+      type: object
+      required:
+        - alg
+        - kid
+        - value
+      properties:
+        alg:
+          type: string
+        kid:
+          type: string
+        value:
+          type: string
+          description: Base64-encoded signature over the JSON `data` payload.
+    PublicKey:
+      type: object
+      required:
+        - kid
+        - algorithm
+        - public_key
+        - status
+        - created_at
+      properties:
+        kid:
+          type: string
+        algorithm:
+          type: string
+        public_key:
+          type: string
+          description: Base64-encoded Ed25519 public key bytes.
+        status:
+          type: string
+          enum:
+            - active
+            - retired
+        created_at:
+          type: string
+          format: date-time
+    Product:
+      type: object
+      required:
+        - id
+        - name
+        - code
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ProductCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - code
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    ProductUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    Policy:
+      type: object
+      required:
+        - id
+        - product_id
+        - name
+        - code
+        - license_type
+        - max_activations
+        - floating_timeout_minutes
+        - grace_period_days
+        - validation_interval_minutes
+        - require_heartbeat
+        - allow_offline_activation
+        - offline_grace_days
+        - allow_vm
+        - allow_container
+        - max_transfers
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        product_id:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+        license_type:
+          $ref: "#/components/schemas/LicenseType"
+        max_activations:
+          type: integer
+        max_floating_users:
+          type: integer
+        max_container_instances:
+          type: integer
+        floating_timeout_minutes:
+          type: integer
+        grace_period_days:
+          type: integer
+        validation_interval_minutes:
+          type: integer
+        require_heartbeat:
+          type: boolean
+        allow_offline_activation:
+          type: boolean
+        offline_grace_days:
+          type: integer
+        allow_vm:
+          type: boolean
+        allow_container:
+          type: boolean
+        max_transfers:
+          type: integer
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PolicyCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - code
+        - license_type
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        license_type:
+          $ref: "#/components/schemas/LicenseType"
+        max_floating_users:
+          type: integer
+          minimum: 0
+        floating_timeout_minutes:
+          type: integer
+          minimum: 1
+        require_heartbeat:
+          type: boolean
+        metadata:
+          type: object
+          additionalProperties: true
+    PolicyUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        license_type:
+          $ref: "#/components/schemas/LicenseType"
+        max_floating_users:
+          type: integer
+          minimum: 0
+        floating_timeout_minutes:
+          type: integer
+          minimum: 1
+        require_heartbeat:
+          type: boolean
+        metadata:
+          type: object
+          additionalProperties: true
+    Feature:
+      type: object
+      required:
+        - id
+        - product_id
+        - code
+        - name
+        - metadata
+        - created_at
+      properties:
+        id:
+          type: string
+        product_id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    FeatureCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - code
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    Customer:
+      type: object
+      required:
+        - id
+        - name
+        - code
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+        email:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CustomerCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - code
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        email:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    CustomerUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        email:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    APIKey:
+      type: object
+      required:
+        - id
+        - name
+        - key_prefix
+        - scopes
+        - allowed_cidrs
+        - is_active
+        - created_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        key_prefix:
+          type: string
+        scopes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManagementScope"
+        allowed_cidrs:
+          type: array
+          items:
+            type: string
+        is_active:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    APIKeyCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        scopes:
+          type: array
+          description: Defaults to `["admin"]` when omitted.
+          items:
+            $ref: "#/components/schemas/ManagementScope"
+        allowed_cidrs:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+    APIKeyCreateResponse:
+      type: object
+      required:
+        - api_key
+        - token
+      properties:
+        api_key:
+          $ref: "#/components/schemas/APIKey"
+        token:
+          type: string
+    ProductVersion:
+      type: object
+      required:
+        - id
+        - product_id
+        - version
+        - released_at
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        product_id:
+          type: string
+        version:
+          type: string
+        released_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ProductVersionCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+      properties:
+        version:
+          type: string
+        released_at:
+          type: string
+          format: date-time
+          description: Defaults to the current server time when omitted.
+        metadata:
+          type: object
+          additionalProperties: true
+    Subscription:
+      type: object
+      required:
+        - id
+        - product_id
+        - external_system
+        - external_id
+        - status
+        - current_period_start
+        - current_period_end
+        - cancel_at_period_end
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        product_id:
+          type: string
+        customer_id:
+          type: string
+        external_system:
+          type: string
+        external_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/SubscriptionStatus"
+        current_period_start:
+          type: string
+          format: date-time
+        current_period_end:
+          type: string
+          format: date-time
+        cancel_at_period_end:
+          type: boolean
+        canceled_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SubscriptionCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - external_system
+        - external_id
+        - status
+        - current_period_start
+        - current_period_end
+      properties:
+        customer_id:
+          type: string
+        external_system:
+          type: string
+        external_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/SubscriptionStatus"
+        current_period_start:
+          type: string
+          format: date-time
+        current_period_end:
+          type: string
+          format: date-time
+        cancel_at_period_end:
+          type: boolean
+          description: Defaults to `false`.
+        canceled_at:
+          type: string
+          format: date-time
+          description: Allowed only when `status` is `canceled`.
+        metadata:
+          type: object
+          additionalProperties: true
+    SubscriptionUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        customer_id:
+          type: string
+          description: Send an empty string to clear the current link.
+        external_system:
+          type: string
+        external_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/SubscriptionStatus"
+        current_period_start:
+          type: string
+          format: date-time
+        current_period_end:
+          type: string
+          format: date-time
+        cancel_at_period_end:
+          type: boolean
+        canceled_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    Order:
+      type: object
+      required:
+        - id
+        - product_id
+        - external_system
+        - external_id
+        - status
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        product_id:
+          type: string
+        customer_id:
+          type: string
+        subscription_id:
+          type: string
+        external_system:
+          type: string
+        external_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OrderCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - external_system
+        - external_id
+        - status
+      properties:
+        customer_id:
+          type: string
+        subscription_id:
+          type: string
+        external_system:
+          type: string
+        external_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        period_start:
+          type: string
+          format: date-time
+          description: Must be provided together with `period_end`.
+        period_end:
+          type: string
+          format: date-time
+          description: Must be provided together with `period_start`.
+        metadata:
+          type: object
+          additionalProperties: true
+    OrderUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        customer_id:
+          type: string
+          description: Send an empty string to clear the current link.
+        subscription_id:
+          type: string
+          description: Send an empty string to clear the current link.
+        external_system:
+          type: string
+        external_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    CustomFieldDefinition:
+      type: object
+      required:
+        - id
+        - product_id
+        - resource_type
+        - code
+        - name
+        - value_type
+        - is_required
+        - enum_options
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        product_id:
+          type: string
+        resource_type:
+          $ref: "#/components/schemas/CustomFieldResourceType"
+        code:
+          type: string
+        name:
+          type: string
+        value_type:
+          $ref: "#/components/schemas/CustomFieldValueType"
+        is_required:
+          type: boolean
+        enum_options:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CustomFieldDefinitionCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - resource_type
+        - code
+        - name
+        - value_type
+      properties:
+        resource_type:
+          $ref: "#/components/schemas/CustomFieldResourceType"
+        code:
+          type: string
+        name:
+          type: string
+        value_type:
+          $ref: "#/components/schemas/CustomFieldValueType"
+        is_required:
+          type: boolean
+        enum_options:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    CustomFieldDefinitionUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        is_required:
+          type: boolean
+        enum_options:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    CustomFieldValue:
+      type: object
+      required:
+        - definition_id
+        - product_id
+        - resource_type
+        - resource_id
+        - code
+        - name
+        - value_type
+        - is_required
+        - enum_options
+        - metadata
+        - updated_at
+      properties:
+        definition_id:
+          type: string
+        product_id:
+          type: string
+        resource_type:
+          $ref: "#/components/schemas/CustomFieldResourceType"
+        resource_id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        value_type:
+          $ref: "#/components/schemas/CustomFieldValueType"
+        is_required:
+          type: boolean
+        enum_options:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        string_value:
+          type: string
+        integer_value:
+          type: integer
+          format: int64
+        boolean_value:
+          type: boolean
+        datetime_value:
+          type: string
+          format: date-time
+        enum_value:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    CustomFieldValueUpsertRequest:
+      type: object
+      additionalProperties: false
+      description: Provide exactly one typed value, or set `clear` to true.
+      properties:
+        clear:
+          type: boolean
+        string_value:
+          type: string
+        integer_value:
+          type: integer
+          format: int64
+        boolean_value:
+          type: boolean
+        datetime_value:
+          type: string
+          format: date-time
+        enum_value:
+          type: string
+    License:
+      type: object
+      required:
+        - id
+        - product_id
+        - policy_id
+        - status
+        - license_key_prefix
+        - license_key_last4
+        - active_device_count
+        - times_activated
+        - times_transferred
+        - total_consumptions
+        - entitlement_version
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        product_id:
+          type: string
+        policy_id:
+          type: string
+        customer_id:
+          type: string
+        order_id:
+          type: string
+        subscription_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/LicenseStatus"
+        license_key_prefix:
+          type: string
+        license_key_last4:
+          type: string
+        customer_email:
+          type: string
+        customer_name:
+          type: string
+        active_device_count:
+          type: integer
+        times_activated:
+          type: integer
+        times_transferred:
+          type: integer
+        total_consumptions:
+          type: integer
+          format: int64
+        entitlement_version:
+          type: integer
+          format: int64
+        starts_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        maintenance_expires_at:
+          type: string
+          format: date-time
+          description: Present only for perpetual licenses with a maintenance cutoff.
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    LicenseCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - product_id
+        - policy_id
+      properties:
+        product_id:
+          type: string
+        policy_id:
+          type: string
+        customer_id:
+          type: string
+        order_id:
+          type: string
+          description: |
+            Optional origin order link. The order must belong to the same product.
+            If it is already linked to a subscription and `subscription_id` is omitted,
+            the subscription link is inferred and persisted on the license.
+        subscription_id:
+          type: string
+          description: Optional origin subscription link. The subscription must belong to the same product.
+        customer_email:
+          type: string
+        customer_name:
+          type: string
+        starts_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        maintenance_expires_at:
+          type: string
+          format: date-time
+          description: Supported only for perpetual licenses.
+        metadata:
+          type: object
+          additionalProperties: true
+    LicenseCreateResponse:
+      type: object
+      required:
+        - license
+        - license_key
+      properties:
+        license:
+          $ref: "#/components/schemas/License"
+        license_key:
+          type: string
+    LicenseRenewRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Provide exactly one of `expires_at` or `extend_by_days`.
+        Renewal extends from the current stored expiry when the license is still active,
+        otherwise it extends from the renewal time (`now`).
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+        extend_by_days:
+          type: integer
+          minimum: 1
+        order_id:
+          type: string
+          description: |
+            Optional renewal-source order. It is validated and recorded in audit metadata,
+            but does not rewrite the stored origin linkage on the license.
+        subscription_id:
+          type: string
+          description: |
+            Optional renewal-source subscription. It is validated and recorded in audit metadata,
+            but does not rewrite the stored origin linkage on the license.
+    LicenseTransferRequest:
+      type: object
+      additionalProperties: false
+      description: Provide at least one ownership field or set `reset_devices` to true.
+      properties:
+        customer_id:
+          type: string
+          description: Send an empty string to clear the current linked customer.
+        customer_email:
+          type: string
+        customer_name:
+          type: string
+        reset_devices:
+          type: boolean
+    LicenseFeature:
+      type: object
+      required:
+        - license_id
+        - feature_id
+        - feature_code
+        - feature_name
+        - enabled
+        - total_consumptions
+        - metadata
+      properties:
+        license_id:
+          type: string
+        feature_id:
+          type: string
+        feature_code:
+          type: string
+        feature_name:
+          type: string
+        enabled:
+          type: boolean
+        max_consumptions:
+          type: integer
+          format: int64
+        total_consumptions:
+          type: integer
+          format: int64
+        remaining:
+          type: integer
+          format: int64
+        expires_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    LicenseFeatureAssignRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - feature_id
+      properties:
+        feature_id:
+          type: string
+        enabled:
+          type: boolean
+        max_consumptions:
+          type: integer
+          format: int64
+          minimum: 0
+        expires_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    LicenseFeatureUsageResetRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Select the target assignment with exactly one of `feature_id` or `feature_code`.
+        Then provide at least one usage mutation.
+      properties:
+        feature_id:
+          type: string
+        feature_code:
+          type: string
+        add_credits:
+          type: integer
+          format: int64
+          minimum: 1
+        max_consumptions:
+          type: integer
+          format: int64
+          minimum: 0
+        total_consumptions:
+          type: integer
+          format: int64
+          minimum: 0
+        reset_consumed:
+          type: boolean
+    Device:
+      type: object
+      required:
+        - id
+        - license_id
+        - binding_kind
+        - binding_key
+        - is_vm
+        - is_container
+        - status
+        - first_seen_at
+        - last_seen_at
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        license_id:
+          type: string
+        binding_kind:
+          $ref: "#/components/schemas/DeviceBindingKind"
+        binding_key:
+          type: string
+        fingerprint:
+          type: string
+        hostname:
+          type: string
+        os:
+          type: string
+        ip_address:
+          type: string
+        is_vm:
+          type: boolean
+        is_container:
+          type: boolean
+        container_id:
+          type: string
+        cluster_id:
+          type: string
+        namespace:
+          type: string
+        pod_name:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeviceStatus"
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        last_validated_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Event:
+      type: object
+      required:
+        - sequence
+        - event_type
+        - actor_type
+        - actor_id
+        - resource_type
+        - metadata
+        - created_at
+      properties:
+        sequence:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+        actor_type:
+          $ref: "#/components/schemas/AuditActorType"
+        actor_id:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Audit metadata with sensitive runtime binding values redacted where applicable.
+        ip_address:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    WebhookEndpoint:
+      type: object
+      required:
+        - id
+        - name
+        - url
+        - secret_prefix
+        - event_types
+        - is_active
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        secret_prefix:
+          type: string
+          description: Prefix of the current shared secret. The full secret is returned only on create or rotation.
+        event_types:
+          type: array
+          description: Empty means the endpoint receives all events.
+          items:
+            type: string
+        is_active:
+          type: boolean
+        last_delivery_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WebhookEndpointCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - url
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          items:
+            type: string
+        secret:
+          type: string
+          description: Optional custom shared secret. When omitted, the server generates one.
+        is_active:
+          type: boolean
+    WebhookEndpointUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          description: Replaces the current allow-list. Send an empty array to subscribe to all events.
+          items:
+            type: string
+        secret:
+          type: string
+          description: Replaces the current shared secret with the provided value.
+        rotate_secret:
+          type: boolean
+          description: Generates and returns a new secret. Cannot be combined with `secret`.
+        is_active:
+          type: boolean
+    WebhookEndpointWithSecret:
+      type: object
+      required:
+        - webhook
+        - secret
+      properties:
+        webhook:
+          $ref: "#/components/schemas/WebhookEndpoint"
+        secret:
+          type: string
+    FeatureEntitlement:
+      type: object
+      required:
+        - code
+        - enabled
+      properties:
+        code:
+          type: string
+        enabled:
+          type: boolean
+        quota:
+          type: integer
+          format: int64
+        consumed:
+          type: integer
+          format: int64
+        remaining:
+          type: integer
+          format: int64
+    VersionEligibility:
+      type: object
+      required:
+        - app_version
+        - is_entitled
+        - enforced
+      properties:
+        app_version:
+          type: string
+        is_entitled:
+          type: boolean
+        enforced:
+          type: boolean
+          description: False when the product has no version catalog yet, so version gating is not enforced.
+        released_at:
+          type: string
+          format: date-time
+        eligible_through:
+          type: string
+          format: date-time
+    RuntimeBindingRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Hardware requests use `fingerprint` and leave `is_container` false.
+        Container requests set `is_container` to true and must supply at least one of
+        `cluster_id`, `namespace`, `pod_name`, or `container_id`.
+      properties:
+        fingerprint:
+          type: string
+        hostname:
+          type: string
+        os:
+          type: string
+        is_vm:
+          type: boolean
+        is_container:
+          type: boolean
+        container_id:
+          type: string
+        cluster_id:
+          type: string
+        namespace:
+          type: string
+        pod_name:
+          type: string
+        app_version:
+          type: string
+    ConsumeLicenseRequest:
+      allOf:
+        - $ref: "#/components/schemas/RuntimeBindingRequest"
+        - type: object
+          additionalProperties: false
+          required:
+            - feature_code
+            - event_id
+          properties:
+            feature_code:
+              type: string
+            amount:
+              type: integer
+              format: int64
+              minimum: 1
+              description: Defaults to `1` when omitted.
+            event_id:
+              type: string
+    FloatingLeaseRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - lease_token
+      properties:
+        lease_token:
+          type: string
+    RuntimeEntitlementResponseData:
+      type: object
+      required:
+        - license_id
+        - status
+        - license_type
+        - entitlement_version
+        - issued_at
+        - next_check_at
+        - device_id
+        - features
+      properties:
+        license_id:
+          type: string
+        status:
+          type: string
+        license_type:
+          $ref: "#/components/schemas/LicenseType"
+        entitlement_version:
+          type: integer
+          format: int64
+        issued_at:
+          type: string
+          format: date-time
+        next_check_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        device_id:
+          type: string
+        features:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeatureEntitlement"
+        version_eligibility:
+          $ref: "#/components/schemas/VersionEligibility"
+    DeactivationResponseData:
+      type: object
+      required:
+        - license_id
+        - status
+        - license_type
+        - entitlement_version
+        - issued_at
+        - device_id
+      properties:
+        license_id:
+          type: string
+        status:
+          type: string
+        license_type:
+          $ref: "#/components/schemas/LicenseType"
+        entitlement_version:
+          type: integer
+          format: int64
+        issued_at:
+          type: string
+          format: date-time
+        device_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    FloatingCheckoutResponseData:
+      type: object
+      required:
+        - license_id
+        - status
+        - license_type
+        - entitlement_version
+        - issued_at
+        - device_id
+        - lease_token
+        - lease_expires_at
+        - features
+      properties:
+        license_id:
+          type: string
+        status:
+          type: string
+        license_type:
+          $ref: "#/components/schemas/LicenseType"
+        entitlement_version:
+          type: integer
+          format: int64
+        issued_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        device_id:
+          type: string
+        lease_token:
+          type: string
+        lease_expires_at:
+          type: string
+          format: date-time
+        features:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeatureEntitlement"
+        version_eligibility:
+          $ref: "#/components/schemas/VersionEligibility"
+    FloatingLeaseResponseData:
+      type: object
+      required:
+        - license_id
+        - status
+        - license_type
+        - entitlement_version
+        - issued_at
+        - device_id
+        - lease_expires_at
+      properties:
+        license_id:
+          type: string
+        status:
+          type: string
+        license_type:
+          $ref: "#/components/schemas/LicenseType"
+        entitlement_version:
+          type: integer
+          format: int64
+        issued_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        device_id:
+          type: string
+        lease_expires_at:
+          type: string
+          format: date-time
+        features:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeatureEntitlement"
+        version_eligibility:
+          $ref: "#/components/schemas/VersionEligibility"
+    OfflineEnvelope:
+      type: object
+      required:
+        - kid
+        - salt
+        - nonce
+        - ciphertext
+      properties:
+        kid:
+          type: string
+        salt:
+          type: string
+          description: Base64-encoded HKDF salt.
+        nonce:
+          type: string
+          description: Base64-encoded AES-GCM nonce.
+        ciphertext:
+          type: string
+          description: Base64-encoded encrypted signed payload envelope.
+    SignedRuntimeEntitlementEnvelope:
+      type: object
+      required:
+        - data
+        - signature
+        - meta
+      properties:
+        data:
+          $ref: "#/components/schemas/RuntimeEntitlementResponseData"
+        signature:
+          $ref: "#/components/schemas/Signature"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    SignedRuntimeDeactivationEnvelope:
+      type: object
+      required:
+        - data
+        - signature
+        - meta
+      properties:
+        data:
+          $ref: "#/components/schemas/DeactivationResponseData"
+        signature:
+          $ref: "#/components/schemas/Signature"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    SignedRuntimeFloatingCheckoutEnvelope:
+      type: object
+      required:
+        - data
+        - signature
+        - meta
+      properties:
+        data:
+          $ref: "#/components/schemas/FloatingCheckoutResponseData"
+        signature:
+          $ref: "#/components/schemas/Signature"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    SignedRuntimeFloatingLeaseEnvelope:
+      type: object
+      required:
+        - data
+        - signature
+        - meta
+      properties:
+        data:
+          $ref: "#/components/schemas/FloatingLeaseResponseData"
+        signature:
+          $ref: "#/components/schemas/Signature"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    HealthData:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+    ReadyData:
+      type: object
+      required:
+        - status
+        - db
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - not_ready
+        db:
+          type: string
+paths:
+  /api/v1/license/activate:
+    post:
+      operationId: activateLicense
+      tags: [runtime]
+      summary: Activate a license for a hardware or container binding
+      description: |
+        Returns the signed entitlement state for the requested binding.
+        Verify `signature` against `/api/v1/system/public-keys`.
+      security:
+        - licenseAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeBindingRequest"
+      responses:
+        "200":
+          description: Signed activation response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedRuntimeEntitlementEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedLicense"
+        "403":
+          $ref: "#/components/responses/ForbiddenRuntime"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/license/validate:
+    post:
+      operationId: validateLicense
+      tags: [runtime]
+      summary: Validate a bound license and refresh validation timestamps
+      security:
+        - licenseAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeBindingRequest"
+      responses:
+        "200":
+          description: Signed validation response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedRuntimeEntitlementEnvelope"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedLicense"
+        "403":
+          $ref: "#/components/responses/ForbiddenRuntime"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/license/check:
+    post:
+      operationId: checkLicense
+      tags: [runtime]
+      summary: Check current entitlements without mutating validation timestamps
+      security:
+        - licenseAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeBindingRequest"
+      responses:
+        "200":
+          description: Signed entitlement response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedRuntimeEntitlementEnvelope"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedLicense"
+        "403":
+          $ref: "#/components/responses/ForbiddenRuntime"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/license/consume:
+    post:
+      operationId: consumeLicense
+      tags: [runtime]
+      summary: Consume metered feature usage for an active bound license
+      security:
+        - licenseAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsumeLicenseRequest"
+      responses:
+        "200":
+          description: Signed entitlement response with updated balances.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedRuntimeEntitlementEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedLicense"
+        "403":
+          $ref: "#/components/responses/ForbiddenRuntime"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/license/offline:
+    post:
+      operationId: issueOfflineLicense
+      tags: [runtime]
+      summary: Issue an encrypted offline license envelope for a bound device
+      description: |
+        The returned payload is encrypted with a key derived from the license key and
+        contains a signed inner payload. Verify the inner signature after decryption
+        against `/api/v1/system/public-keys`.
+      security:
+        - licenseAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeBindingRequest"
+      responses:
+        "200":
+          description: Encrypted offline license envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/OfflineEnvelope"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedLicense"
+        "403":
+          $ref: "#/components/responses/ForbiddenRuntime"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/license/deactivate:
+    post:
+      operationId: deactivateLicense
+      tags: [runtime]
+      summary: Deactivate a bound license device
+      security:
+        - licenseAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeBindingRequest"
+      responses:
+        "200":
+          description: Signed deactivation response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedRuntimeDeactivationEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedLicense"
+        "403":
+          $ref: "#/components/responses/ForbiddenRuntime"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/license/floating/checkout:
+    post:
+      operationId: checkoutFloatingLicense
+      tags: [runtime]
+      summary: Check out a floating lease for a hardware or container binding
+      security:
+        - licenseAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeBindingRequest"
+      responses:
+        "200":
+          description: Signed floating checkout response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedRuntimeFloatingCheckoutEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedLicense"
+        "403":
+          $ref: "#/components/responses/ForbiddenRuntime"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/license/floating/checkin:
+    post:
+      operationId: checkinFloatingLicense
+      tags: [runtime]
+      summary: Check in a floating lease token
+      security:
+        - licenseAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FloatingLeaseRequest"
+      responses:
+        "200":
+          description: Signed floating checkin response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedRuntimeFloatingLeaseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedLicense"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/license/floating/heartbeat:
+    post:
+      operationId: heartbeatFloatingLicense
+      tags: [runtime]
+      summary: Extend a floating lease before it expires
+      security:
+        - licenseAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FloatingLeaseRequest"
+      responses:
+        "200":
+          description: Signed floating heartbeat response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignedRuntimeFloatingLeaseEnvelope"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedLicense"
+        "403":
+          $ref: "#/components/responses/ForbiddenRuntime"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List products
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Product list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create a product
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductCreateRequest"
+      responses:
+        "201":
+          description: Product created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Product"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/products/{id}:
+    get:
+      operationId: getProduct
+      tags: [products]
+      summary: Get a product
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: Product record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Product"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update a product
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdateRequest"
+      responses:
+        "200":
+          description: Product updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Product"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      summary: Delete a product
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "204":
+          description: Product deleted.
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/products/{id}/versions:
+    get:
+      operationId: listProductVersions
+      tags: [versions]
+      summary: List product versions
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Product version list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ProductVersion"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: createProductVersion
+      tags: [versions]
+      summary: Create a product version
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductVersionCreateRequest"
+      responses:
+        "201":
+          description: Product version created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ProductVersion"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/products/{id}/subscriptions:
+    get:
+      operationId: listProductSubscriptions
+      tags: [commerce]
+      summary: List subscriptions for a product
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Subscription list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Subscription"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: createSubscription
+      tags: [commerce]
+      summary: Create a subscription record for a product
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionCreateRequest"
+      responses:
+        "201":
+          description: Subscription created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Subscription"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/subscriptions/{id}:
+    get:
+      operationId: getSubscription
+      tags: [commerce]
+      summary: Get a subscription record
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: Subscription record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Subscription"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateSubscription
+      tags: [commerce]
+      summary: Update a subscription record
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionUpdateRequest"
+      responses:
+        "200":
+          description: Subscription updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Subscription"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/products/{id}/orders:
+    get:
+      operationId: listProductOrders
+      tags: [commerce]
+      summary: List orders for a product
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Order list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Order"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: createOrder
+      tags: [commerce]
+      summary: Create an order record for a product
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderCreateRequest"
+      responses:
+        "201":
+          description: Order created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Order"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/orders/{id}:
+    get:
+      operationId: getOrder
+      tags: [commerce]
+      summary: Get an order record
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: Order record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Order"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateOrder
+      tags: [commerce]
+      summary: Update an order record
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderUpdateRequest"
+      responses:
+        "200":
+          description: Order updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Order"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/products/{id}/custom-fields:
+    get:
+      operationId: listProductCustomFieldDefinitions
+      tags: [custom-fields]
+      summary: List product custom field definitions
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Custom field definition list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomFieldDefinition"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: createProductCustomFieldDefinition
+      tags: [custom-fields]
+      summary: Create a product custom field definition
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomFieldDefinitionCreateRequest"
+      responses:
+        "201":
+          description: Custom field definition created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CustomFieldDefinition"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/products/{id}/custom-fields/{field_id}:
+    get:
+      operationId: getProductCustomFieldDefinition
+      tags: [custom-fields]
+      summary: Get a product custom field definition
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/FieldIDPath"
+      responses:
+        "200":
+          description: Custom field definition.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CustomFieldDefinition"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateProductCustomFieldDefinition
+      tags: [custom-fields]
+      summary: Update a product custom field definition
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/FieldIDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomFieldDefinitionUpdateRequest"
+      responses:
+        "200":
+          description: Custom field definition updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CustomFieldDefinition"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteProductCustomFieldDefinition
+      tags: [custom-fields]
+      summary: Delete a product custom field definition
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/FieldIDPath"
+      responses:
+        "204":
+          description: Custom field definition deleted.
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/products/{id}/policies:
+    get:
+      operationId: listPoliciesByProduct
+      tags: [policies]
+      summary: List policies for a product
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Policy list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Policy"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: createPolicy
+      tags: [policies]
+      summary: Create a policy for a product
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyCreateRequest"
+      responses:
+        "201":
+          description: Policy created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Policy"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/products/{id}/features:
+    get:
+      operationId: listFeaturesByProduct
+      tags: [features]
+      summary: List features for a product
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Feature list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Feature"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: createFeature
+      tags: [features]
+      summary: Create a feature for a product
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeatureCreateRequest"
+      responses:
+        "201":
+          description: Feature created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Feature"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/policies/{id}:
+    get:
+      operationId: getPolicy
+      tags: [policies]
+      summary: Get a policy
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: Policy record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Policy"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updatePolicy
+      tags: [policies]
+      summary: Update a policy
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyUpdateRequest"
+      responses:
+        "200":
+          description: Policy updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Policy"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deletePolicy
+      tags: [policies]
+      summary: Delete a policy
+      x-required-scopes: ["product:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "204":
+          description: Policy deleted.
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/features/{id}:
+    get:
+      operationId: getFeature
+      tags: [features]
+      summary: Get a feature
+      x-required-scopes: ["product:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: Feature record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Feature"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/customers:
+    get:
+      operationId: listCustomers
+      tags: [customers]
+      summary: List customers
+      x-required-scopes: ["admin"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Customer list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Customer"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: createCustomer
+      tags: [customers]
+      summary: Create a customer
+      x-required-scopes: ["admin"]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerCreateRequest"
+      responses:
+        "201":
+          description: Customer created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Customer"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/customers/{id}:
+    get:
+      operationId: getCustomer
+      tags: [customers]
+      summary: Get a customer
+      x-required-scopes: ["admin"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: Customer record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Customer"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateCustomer
+      tags: [customers]
+      summary: Update a customer
+      x-required-scopes: ["admin"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerUpdateRequest"
+      responses:
+        "200":
+          description: Customer updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Customer"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteCustomer
+      tags: [customers]
+      summary: Delete a customer
+      x-required-scopes: ["admin"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "204":
+          description: Customer deleted.
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/customers/{id}/custom-fields:
+    get:
+      operationId: listCustomerCustomFieldValues
+      tags: [custom-fields]
+      summary: List customer custom field values
+      x-required-scopes: ["admin"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Customer custom field values.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomFieldValue"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/customers/{id}/custom-fields/{field_id}:
+    put:
+      operationId: upsertCustomerCustomFieldValue
+      tags: [custom-fields]
+      summary: Upsert a customer custom field value
+      x-required-scopes: ["admin"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/FieldIDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomFieldValueUpsertRequest"
+      responses:
+        "200":
+          description: Customer custom field value written.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CustomFieldValue"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "204":
+          description: Customer custom field value cleared.
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/api-keys:
+    get:
+      operationId: listAPIKeys
+      tags: [api-keys]
+      summary: List management API keys
+      x-required-scopes: ["admin"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: API key list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/APIKey"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: createAPIKey
+      tags: [api-keys]
+      summary: Create a management API key
+      x-required-scopes: ["admin"]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreateRequest"
+      responses:
+        "201":
+          description: API key created. The raw token is returned once.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/APIKeyCreateResponse"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/events:
+    get:
+      operationId: listEvents
+      tags: [events]
+      summary: List audit-backed event records
+      x-required-scopes: ["event:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CursorParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - in: query
+          name: event_type
+          schema:
+            type: string
+        - in: query
+          name: resource_type
+          schema:
+            type: string
+        - in: query
+          name: resource_id
+          schema:
+            type: string
+        - in: query
+          name: actor_type
+          schema:
+            $ref: "#/components/schemas/AuditActorType"
+      responses:
+        "200":
+          description: Event feed page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - page_info
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Event"
+                  page_info:
+                    $ref: "#/components/schemas/EventPageInfo"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidQuery"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+  /api/v1/webhooks:
+    get:
+      operationId: listWebhookEndpoints
+      tags: [webhooks]
+      summary: List webhook endpoints
+      x-required-scopes: ["webhook:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Webhook endpoint list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebhookEndpoint"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: createWebhookEndpoint
+      tags: [webhooks]
+      summary: Create a webhook endpoint
+      x-required-scopes: ["webhook:write"]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEndpointCreateRequest"
+      responses:
+        "201":
+          description: Webhook endpoint created. The raw secret is returned once.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/WebhookEndpointWithSecret"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/webhooks/{id}:
+    get:
+      operationId: getWebhookEndpoint
+      tags: [webhooks]
+      summary: Get a webhook endpoint
+      x-required-scopes: ["webhook:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: Webhook endpoint record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/WebhookEndpoint"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateWebhookEndpoint
+      tags: [webhooks]
+      summary: Update a webhook endpoint
+      x-required-scopes: ["webhook:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEndpointUpdateRequest"
+      responses:
+        "200":
+          description: Webhook endpoint updated. Secret rotations return `{webhook, secret}` inside `data`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    oneOf:
+                      - $ref: "#/components/schemas/WebhookEndpoint"
+                      - $ref: "#/components/schemas/WebhookEndpointWithSecret"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteWebhookEndpoint
+      tags: [webhooks]
+      summary: Delete a webhook endpoint
+      x-required-scopes: ["webhook:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "204":
+          description: Webhook endpoint deleted.
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/licenses:
+    get:
+      operationId: listLicenses
+      tags: [licenses]
+      summary: List licenses
+      x-required-scopes: ["license:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitParam"
+        - in: query
+          name: product_id
+          schema:
+            type: string
+        - in: query
+          name: policy_id
+          schema:
+            type: string
+        - in: query
+          name: customer_id
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/LicenseStatus"
+        - in: query
+          name: order_id
+          schema:
+            type: string
+        - in: query
+          name: subscription_id
+          schema:
+            type: string
+        - in: query
+          name: expires_before
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: expires_after
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: License list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/License"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidQuery"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: createLicense
+      tags: [licenses]
+      summary: Create a license
+      description: |
+        Validated origin linkage is persisted on the license.
+        If `order_id` is supplied and that order already links to a subscription,
+        the license's stored `subscription_id` is inferred automatically when omitted.
+      x-required-scopes: ["license:write"]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LicenseCreateRequest"
+      responses:
+        "201":
+          description: License created. The raw license key is returned once.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LicenseCreateResponse"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/licenses/{id}:
+    get:
+      operationId: getLicense
+      tags: [licenses]
+      summary: Get a license
+      x-required-scopes: ["license:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: License record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/License"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/licenses/{id}/custom-fields:
+    get:
+      operationId: listLicenseCustomFieldValues
+      tags: [custom-fields]
+      summary: List license custom field values
+      x-required-scopes: ["license:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: License custom field values.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomFieldValue"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/licenses/{id}/custom-fields/{field_id}:
+    put:
+      operationId: upsertLicenseCustomFieldValue
+      tags: [custom-fields]
+      summary: Upsert a license custom field value
+      x-required-scopes: ["license:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/FieldIDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomFieldValueUpsertRequest"
+      responses:
+        "200":
+          description: License custom field value written.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CustomFieldValue"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "204":
+          description: License custom field value cleared.
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/licenses/{id}/renew:
+    post:
+      operationId: renewLicense
+      tags: [licenses]
+      summary: Renew or extend a renewable license
+      description: |
+        Renewals are idempotent per license and `Idempotency-Key`.
+        Exactly one of `expires_at` or `extend_by_days` is required.
+        Renewal-source `order_id` and `subscription_id` are validated and recorded in audit metadata,
+        but do not rewrite the stored origin linkage already persisted on the license.
+      x-required-scopes: ["license:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LicenseRenewRequest"
+      responses:
+        "200":
+          description: License renewed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/License"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/licenses/{id}/devices:
+    get:
+      operationId: listLicenseDevices
+      tags: [devices]
+      summary: List devices for a license
+      x-required-scopes: ["license:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: Device list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Device"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/licenses/{id}/devices/{device_id}:
+    get:
+      operationId: getLicenseDevice
+      tags: [devices]
+      summary: Get a device for a license
+      x-required-scopes: ["license:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/DeviceIDPath"
+      responses:
+        "200":
+          description: Device record.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Device"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/licenses/{id}/devices/{device_id}/reset:
+    post:
+      operationId: resetLicenseDevice
+      tags: [devices]
+      summary: Reset a managed device and clear its active state
+      x-required-scopes: ["device:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/DeviceIDPath"
+      responses:
+        "200":
+          description: Device reset.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Device"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/licenses/{id}/devices/{device_id}/blacklist:
+    post:
+      operationId: blacklistLicenseDevice
+      tags: [devices]
+      summary: Blacklist a managed device and block future reuse
+      x-required-scopes: ["device:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/DeviceIDPath"
+      responses:
+        "200":
+          description: Device blacklisted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Device"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/licenses/{id}/suspend:
+    post:
+      operationId: suspendLicense
+      tags: [licenses]
+      summary: Suspend a license
+      x-required-scopes: ["license:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: License suspended or already suspended.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/License"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/licenses/{id}/reinstate:
+    post:
+      operationId: reinstateLicense
+      tags: [licenses]
+      summary: Reinstate a suspended license
+      x-required-scopes: ["license:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: License reinstated or already active.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/License"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/v1/licenses/{id}/revoke:
+    post:
+      operationId: revokeLicense
+      tags: [licenses]
+      summary: Revoke a license and clear active seats
+      x-required-scopes: ["license:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200":
+          description: License revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/License"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/licenses/{id}/transfer:
+    post:
+      operationId: transferLicense
+      tags: [licenses]
+      summary: Transfer a license to another assignee
+      x-required-scopes: ["license:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LicenseTransferRequest"
+      responses:
+        "200":
+          description: License transferred.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/License"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/licenses/{id}/features:
+    get:
+      operationId: listLicenseFeatures
+      tags: [features]
+      summary: List assigned features for a license
+      x-required-scopes: ["license:read"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/LimitParam"
+      responses:
+        "200":
+          description: License feature list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LicenseFeature"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+    post:
+      operationId: assignLicenseFeature
+      tags: [features]
+      summary: Assign or update a feature on a license
+      x-required-scopes: ["license:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LicenseFeatureAssignRequest"
+      responses:
+        "200":
+          description: License feature assignment written.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LicenseFeature"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/v1/licenses/{id}/features/{feature_id}:
+    delete:
+      operationId: removeLicenseFeature
+      tags: [features]
+      summary: Remove a feature assignment from a license
+      x-required-scopes: ["license:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - $ref: "#/components/parameters/FeatureIDPath"
+      responses:
+        "204":
+          description: License feature removed.
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/licenses/{id}/usage/reset:
+    post:
+      operationId: resetLicenseUsage
+      tags: [features]
+      summary: Reset or top up metered feature usage
+      x-required-scopes: ["license:write"]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LicenseFeatureUsageResetRequest"
+      responses:
+        "200":
+          description: License feature usage updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LicenseFeature"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/InvalidJSON"
+        "401":
+          $ref: "#/components/responses/UnauthorizedManagement"
+        "403":
+          $ref: "#/components/responses/ForbiddenScope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /health:
+    get:
+      operationId: health
+      tags: [system]
+      summary: Hosted-safe liveness probe
+      security: []
+      responses:
+        "200":
+          description: Service is alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/HealthData"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+  /healthz:
+    get:
+      operationId: healthz
+      tags: [system]
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: Service is alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/HealthData"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+  /readyz:
+    get:
+      operationId: readyz
+      tags: [system]
+      summary: Readiness probe
+      security: []
+      responses:
+        "200":
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ReadyData"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "503":
+          description: Service is not ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ReadyData"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+  /metrics:
+    get:
+      operationId: getMetrics
+      tags: [system]
+      summary: Prometheus metrics
+      security: []
+      responses:
+        "200":
+          description: Prometheus metrics payload.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /api/v1/system/public-keys:
+    get:
+      operationId: listPublicKeys
+      tags: [system]
+      summary: List public signing keys
+      security: []
+      responses:
+        "200":
+          description: Active and retired public signing keys.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PublicKey"
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"

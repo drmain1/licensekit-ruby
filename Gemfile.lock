@@ -1,0 +1,19 @@
+PATH
+  remote: .
+  specs:
+    licensekit-ruby (0.1.0.alpha.0)
+      ed25519 (~> 1.3)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    ed25519 (1.3.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  licensekit-ruby!
+
+BUNDLED WITH
+   1.17.2
