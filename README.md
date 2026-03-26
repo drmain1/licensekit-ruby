@@ -101,11 +101,11 @@ puts [ready.status, ready.data["data"]["status"]].join(" ")
 ## Development
 
 ```bash
-bundle install
+bundle install --path vendor/bundle
 ruby scripts/generate_from_openapi.rb
-ruby -Ilib:test test/test_client.rb
-ruby -Ilib:test test/test_scopes.rb
-ruby -Ilib:test test/test_verification.rb
+bundle exec ruby -Ilib:test test/test_client.rb
+bundle exec ruby -Ilib:test test/test_scopes.rb
+bundle exec ruby -Ilib:test test/test_verification.rb
 gem build licensekit-ruby.gemspec
 ```
 
